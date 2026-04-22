@@ -1,0 +1,50 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          # Tells GitHub the lock file is in the subfolder
+          cache-dependency-path: ./mist-task/package-lock.json
+          
+      # Runs npm install inside your subfolder
+      - run: npm ci
+        working-directory: ./mist-task
+      
+      # Runs the build inside the subfolder AND passes your Supabase keys
+      - run: npm run build
+        working-directory: ./mist-task
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          
+      - uses: actions/configure-pages@v4
+      
+      # Uploads the correct built folder from inside the subfolder
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./mist-task/dist
+          
+      - uses: actions/deploy-pages@v4
+        id: deployment
