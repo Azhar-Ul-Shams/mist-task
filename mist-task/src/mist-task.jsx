@@ -1,11 +1,10 @@
 /**
- * Montreal Imaging Stress Task (MIST) — Web Implementation
+ * Montreal Imaging Stress Task (MIST)
  *
- * Correct protocol order:
+ * Workflow:
  *   Welcome → Training (skippable) → Control → Rest (skippable) → Experimental → Summary
  *
  * Supabase is used for real-time persistent storage.
- * Replace the two constants below with your own project values.
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -14,12 +13,8 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 
-/* ─────────────────────────────────────────────────────────
-   SUPABASE  ·  replace with your own values
-   supabase.com → Project Settings → API
-───────────────────────────────────────────────────────── */
-const SUPABASE_URL  = "YOUR_SUPABASE_URL";       // e.g. https://xyzabc.supabase.co
-const SUPABASE_ANON = "YOUR_SUPABASE_ANON_KEY";  // long JWT starting with eyJ…
+const SUPABASE_URL   = "https://frdjogmhhjpmksciaieo.supabase.co";
+const SUPABASE_ANON  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZyZGpvZ21oaGpwbWtzY2lhaWVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NjY2NjYsImV4cCI6MjA5MjQ0MjY2Nn0.T0Bqt709IUrXpKLiClZHca2pgJfcGIc-BkIQmJOcuLc";
 
 const DB = {
   async insert(table, row) {
@@ -54,7 +49,6 @@ const DB_ON = SUPABASE_URL !== "YOUR_SUPABASE_URL";
 /* ─────────────────────────────────────────────────────────
    PROTOCOL CONSTANTS
 ───────────────────────────────────────────────────────── */
-// Fixed condition order per MIST protocol:
 // Control first (clean baseline), then Rest (cortisol recovery),
 // then Experimental (stress induction last so it cannot contaminate baseline).
 const CONDITION_ORDER = ["control", "rest", "experimental"];
@@ -306,9 +300,6 @@ function PerfBar({ pct }) {
 
 /* ═══════════════════════════════════════════════════════════════
    SCREEN 1 — WELCOME / REGISTRATION
-   NOTE: inputs are written inline here — never as a sub-component.
-   Defining a component (even a tiny one) inside a render function
-   causes React to unmount+remount it on every keystroke, losing focus.
 ═══════════════════════════════════════════════════════════════ */
 function WelcomePage({ onStart }) {
   const [name,  setName]  = useState("");
