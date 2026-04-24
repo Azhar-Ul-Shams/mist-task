@@ -1,10 +1,11 @@
 /**
- * Montreal Imaging Stress Task (MIST) 
- 
- * Workflow:
+ * Montreal Imaging Stress Task (MIST) — Web Implementation
+ *
+ * Correct protocol order:
  *   Welcome → Training (skippable) → Control → Rest (skippable) → Experimental → Summary
- 
+ *
  * Supabase is used for real-time persistent storage.
+ * Replace the two constants below with your own project values.
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -13,8 +14,12 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 
-const SUPABASE_URL   = "https://frdjogmhhjpmksciaieo.supabase.co";
-const SUPABASE_ANON  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZyZGpvZ21oaGpwbWtzY2lhaWVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NjY2NjYsImV4cCI6MjA5MjQ0MjY2Nn0.T0Bqt709IUrXpKLiClZHca2pgJfcGIc-BkIQmJOcuLc";
+/* ─────────────────────────────────────────────────────────
+   SUPABASE  ·  replace with your own values
+   supabase.com → Project Settings → API
+───────────────────────────────────────────────────────── */
+const SUPABASE_URL  = "YOUR_SUPABASE_URL";       // e.g. https://xyzabc.supabase.co
+const SUPABASE_ANON = "YOUR_SUPABASE_ANON_KEY";  // long JWT starting with eyJ…
 
 const DB = {
   async insert(table, row) {
@@ -918,8 +923,12 @@ export default function MISTApp() {
   const condR     = useRef("control");
   const levelR    = useRef(1);
   const blkTrials = useRef([]);
-  const adaptTO   = useRef(15);
-  const sessionId = useRef(null);
+  const adaptTO       = useRef(15);
+  const sessionId     = useRef(null);
+  // Accumulates every control trial so we can compute per-level mean RTs at the end of control
+  const controlTrials = useRef([]);
+  // Per-level timeout (seconds) derived from control mean correct RT — seeds experimental
+  const controlTOsRef = useRef({});
 
   useEffect(() => { trainTOsRef.current = trainTOs; }, [trainTOs]);
 
@@ -1023,6 +1032,8 @@ export default function MISTApp() {
     };
 
     blkTrials.current = [...blkTrials.current, trial];
+    // Keep a running log of all control trials for timeout derivation
+    if (trial.condition === "control") controlTrials.current.push(trial);
     setAllTrials(prev => {
       const up = [...prev, trial];
       const recent = up.filter(t=>t.condition==="experimental").slice(-10);
@@ -1052,6 +1063,23 @@ export default function MISTApp() {
       setBlkIdx(bIdx + 1);
       setCondSubPhase("level_intro");
     } else if (cIdx < CONDITION_ORDER.length - 1) {
+      // This condition is fully done — if it was control, derive per-level timeouts now
+      if (cond === "control") {
+        const derived = {};
+        [1,2,3,4,5].forEach(lv => {
+          const ok = controlTrials.current.filter(t => t.level === lv && t.correct && !t.timeout && t.rt > 0);
+          if (ok.length > 0) {
+            const meanS = ok.reduce((s,t) => s + t.rt, 0) / ok.length / 1000;
+            // Add a 20 % buffer so participants aren't immediately timed out
+            derived[lv] = Math.max(4, +(meanS * 1.2).toFixed(1));
+          } else {
+            // No correct responses for this level — fall back to training or default
+            derived[lv] = trainTOsRef.current[lv] ?? DEFAULT_TO[lv] ?? 15;
+          }
+        });
+        controlTOsRef.current = derived;
+      }
+
       // Move to next condition
       const nextCI   = cIdx + 1;
       const nextCond = CONDITION_ORDER[nextCI];
@@ -1077,7 +1105,15 @@ export default function MISTApp() {
     levelR.current   = lv;
     blkTrials.current = [];
     fbActive.current  = false;
-    adaptTO.current   = trainTOsRef.current[lv] ?? DEFAULT_TO[lv] ?? 15;
+
+    // Timeout priority: control-derived → training-derived → protocol default
+    // For experimental: always start from control mean RT (+ buffer), never training.
+    // For control itself: training → default.
+    if (cond === "experimental") {
+      adaptTO.current = controlTOsRef.current[lv] ?? trainTOsRef.current[lv] ?? DEFAULT_TO[lv] ?? 15;
+    } else {
+      adaptTO.current = trainTOsRef.current[lv] ?? DEFAULT_TO[lv] ?? 15;
+    }
     setPerfPct(50);
 
     const dur = cond === "rest" ? REST_SECS : BLOCK_SECS;
@@ -1195,6 +1231,7 @@ export default function MISTApp() {
     setTrainTOs({...DEFAULT_TO}); trainTOsRef.current = {...DEFAULT_TO};
     setCondIdx(0); setBlkIdx(0); setBlkOrder(shufl([1,2,3,4,5])); setCondSubPhase("level_intro");
     trTrialsRef.current = {}; blkTrials.current = []; fbActive.current = false;
+    controlTrials.current = {}; controlTOsRef.current = {};
   };
 
   /* ═══════════════════════════════════════════════════════════════
